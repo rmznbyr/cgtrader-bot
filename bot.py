@@ -44,7 +44,7 @@ async def do_download(update, context, url, msg=None):
         if msg:
             await msg.edit_text("🔍 Sayfa taranıyor...")
         else:
-            msg = await update.message.reply_text("🔍 Sayfa taranıyor...")
+            msg = await update.effective_message.reply_text("🔍 Sayfa taranıyor...")
 
         urls, designer, slug = extract_images(url)
 
@@ -99,8 +99,8 @@ async def do_download(update, context, url, msg=None):
                 text=f"✅ {designer} - {slug}\n🔗 {url}",
                 disable_web_page_preview=True
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"Kanal hatası: {e}")
 
     except Exception as e:
         if msg:
@@ -108,7 +108,9 @@ async def do_download(update, context, url, msg=None):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    if not update.effective_message:
+        return
+    await update.effective_message.reply_text(
         "👋 Merhaba! CGTrader Resim İndirici Bot'a hoş geldin.\n\n"
         "📎 Bana bir CGTrader ürün linki gönder, resimleri ZIP olarak sana göndereyim!\n\n"
         "📋 /gecmis — daha önce indirdiklerini gör"
@@ -116,9 +118,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def gecmis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_message:
+        return
     history = context.bot_data.get("history", {})
     if not history:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📋 Henüz hiç indirme yapmadın.\n\n"
             f"Kanal: https://t.me/cgtrader_gecmis"
         )
@@ -129,27 +133,30 @@ async def gecmis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"{i}. `{info['designer']} - {info['slug'][:30]}`\n   🕐 {info['date']}")
 
     lines.append(f"\n📺 Tüm geçmiş: https://t.me/cgtrader_gecmis")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
+    await update.effective_message.reply_text(
+        "\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True
+    )
 
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
+    if not update.effective_message or not update.effective_message.text:
+        return
+
+    url = update.effective_message.text.strip()
 
     if "cgtrader.com" not in url:
-        await update.message.reply_text("❌ Lütfen geçerli bir CGTrader ürün linki gönder.")
+        await update.effective_message.reply_text("❌ Lütfen geçerli bir CGTrader ürün linki gönder.")
         return
 
     history = context.bot_data.get("history", {})
 
     if url in history:
         info = history[url]
-        keyboard = [
-            [
-                InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{url}"),
-                InlineKeyboardButton("❌ İptal", callback_data="cancel")
-            ]
-        ]
-        await update.message.reply_text(
+        keyboard = [[
+            InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{url}"),
+            InlineKeyboardButton("❌ İptal", callback_data="cancel")
+        ]]
+        await update.effective_message.reply_text(
             f"⚠️ *Bu ürünü daha önce indirdin!*\n\n"
             f"📁 {info['designer']} - {info['slug'][:40]}\n"
             f"🕐 {info['date']}\n\n"
@@ -178,13 +185,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     persistence = PicklePersistence(filepath="bot_data.pkl")
-    app = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
+    app = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .persistence(persistence)
+        .concurrent_updates(False)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("gecmis", gecmis))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
     print("Bot başlatıldı...")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
