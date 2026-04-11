@@ -24,41 +24,50 @@ def url_to_key(url):
     return hashlib.md5(url.encode()).hexdigest()[:16]
 
 
-def parse_and_save(text):
-    """Kanal mesajından URL çıkar - her formatta çalışır."""
+def extract_url_from_text(text):
+    """Metinden CGTrader URL'si çıkar."""
+    if not text:
+        return None
+    urls = re.findall(r'https?://(?:www\.)?cgtrader\.com/\S+', text)
+    if urls:
+        return urls[0].rstrip('.,)')
+    return None
+
+
+def parse_channel_message(text):
+    """Kanal mesajından URL ve bilgileri çıkar - tüm formatları destekler."""
     if not text or "cgtrader.com" not in text:
-        return False
+        return None
 
-    # Tüm cgtrader URL'lerini bul (eski ve yeni format)
-    urls = re.findall(r'https://www\.cgtrader\.com/\S+', text)
-    
-    if not urls:
-        return False
-
-    url = urls[0].strip().rstrip(')')
-    
-    # Tasarımcı ve slug bilgisini çıkarmaya çalış (yeni format)
+    url = None
     designer = "unknown"
-    slug = url.rstrip("/").split("/")[-1][:50]
-    
-    lines = text.strip().split('\n')
-    for line in lines:
-        if line.startswith("✅ "):
-            parts = line[2:].strip().split(" - ", 1)
-            if len(parts) == 2:
-                designer = parts[0].strip()
-                slug = parts[1].strip()[:50]
+    slug = "unknown"
 
-    HISTORY[url] = {
-        "designer": designer,
-        "slug": slug,
-        "date": "Geçmiş"
-    }
-    return True
+    # Yeni format: "✅ designer - slug\n🔗 url"
+    if "🔗 " in text:
+        for line in text.split('\n'):
+            if "🔗 " in line:
+                url = line.split("🔗 ", 1)[1].strip()
+            elif line.startswith("✅ "):
+                parts = line[2:].strip().split(" - ", 1)
+                if len(parts) == 2:
+                    designer = parts[0].strip()
+                    slug = parts[1].strip()
+
+    # Eski format: sadece URL
+    if not url:
+        url = extract_url_from_text(text)
+        if url:
+            # Slug'ı URL'den çıkar
+            slug = url.rstrip("/").split("/")[-1][:50]
+
+    if url and "cgtrader.com" in url:
+        return {"url": url, "designer": designer, "slug": slug}
+    return None
 
 
 async def post_init(app):
-    """Bot başlarken kanalı tara ve geçmişi yükle."""
+    """Bot başlarken kanalı tara ve tüm geçmişi yükle."""
     print("Kanal geçmişi yükleniyor...")
     loaded = 0
 
@@ -66,7 +75,7 @@ async def post_init(app):
         msg_id = 1
         empty_count = 0
 
-        while empty_count < 20:
+        while empty_count < 30:
             try:
                 msg = await app.bot.forward_message(
                     chat_id=HISTORY_CHANNEL,
@@ -82,15 +91,22 @@ async def post_init(app):
                 except:
                     pass
 
-                if msg.text and "cgtrader.com" in msg.text:
-                    if parse_and_save(msg.text):
-                        loaded += 1
+                text = msg.text or msg.caption or ""
+                result = parse_channel_message(text)
+                if result:
+                    HISTORY[result["url"]] = {
+                        "designer": result["designer"],
+                        "slug": result["slug"],
+                        "date": "Geçmiş"
+                    }
+                    loaded += 1
+
                 empty_count = 0
             except Exception:
                 empty_count += 1
 
             msg_id += 1
-            if msg_id > 50000:
+            if msg_id > 10000:
                 break
 
         print(f"✅ {loaded} geçmiş kayıt yüklendi")
