@@ -16,15 +16,76 @@ HEADERS = {
     "Referer": "https://www.cgtrader.com/",
 }
 
-# Bellek içi geçmiş
 HISTORY = {}
-# URL hash -> tam URL eşleşmesi
 URL_MAP = {}
 
 
 def url_to_key(url):
-    """URL'den kısa hash key üret (max 32 karakter)."""
     return hashlib.md5(url.encode()).hexdigest()[:16]
+
+
+def parse_and_save(text):
+    """Kanal mesajından URL ve bilgileri çıkar."""
+    lines = text.strip().split('\n')
+    url = None
+    designer = "unknown"
+    slug = "unknown"
+
+    for line in lines:
+        if "🔗 " in line:
+            url = line.split("🔗 ", 1)[1].strip()
+        elif line.startswith("✅ "):
+            parts = line[2:].strip().split(" - ", 1)
+            if len(parts) == 2:
+                designer = parts[0].strip()
+                slug = parts[1].strip()
+
+    if url and "cgtrader.com" in url:
+        HISTORY[url] = {
+            "designer": designer,
+            "slug": slug,
+            "date": "Geçmiş"
+        }
+        return True
+    return False
+
+
+async def post_init(app):
+    """Bot başlarken kanalı tara ve geçmişi yükle."""
+    print("Kanal geçmişi yükleniyor...")
+    loaded = 0
+
+    try:
+        # Kanal mesajlarını ID'ye göre tara (1'den başla)
+        msg_id = 1
+        empty_count = 0
+
+        while empty_count < 20:
+            try:
+                msg = await app.bot.forward_message(
+                    chat_id=HISTORY_CHANNEL,
+                    from_chat_id=HISTORY_CHANNEL,
+                    message_id=msg_id
+                )
+                # Forward edilen mesajı sil
+                await app.bot.delete_message(
+                    chat_id=HISTORY_CHANNEL,
+                    message_id=msg.message_id
+                )
+                if msg.text and "🔗" in msg.text and "cgtrader.com" in msg.text:
+                    if parse_and_save(msg.text):
+                        loaded += 1
+                empty_count = 0
+            except Exception:
+                empty_count += 1
+
+            msg_id += 1
+            if msg_id > 50000:
+                break
+
+        print(f"✅ {loaded} geçmiş kayıt yüklendi")
+    except Exception as e:
+        print(f"Geçmiş yükleme hatası: {e}")
 
 
 def extract_images(page_url):
@@ -94,14 +155,12 @@ async def do_download(update, context, url, msg=None):
         )
         await msg.delete()
 
-        # Geçmişe kaydet
         HISTORY[url] = {
             "designer": designer,
             "slug": slug,
             "date": datetime.now().strftime("%d.%m.%Y %H:%M")
         }
 
-        # Kanala kaydet
         try:
             await context.bot.send_message(
                 chat_id=HISTORY_CHANNEL,
@@ -158,7 +217,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if url in HISTORY:
         info = HISTORY[url]
-        # URL hash'ini buton callback'e koy (max 64 karakter)
         key = url_to_key(url)
         URL_MAP[key] = url
         keyboard = [[
@@ -201,6 +259,7 @@ def main():
         ApplicationBuilder()
         .token(TOKEN)
         .concurrent_updates(False)
+        .post_init(post_init)
         .build()
     )
     app.add_handler(CommandHandler("start", start))
