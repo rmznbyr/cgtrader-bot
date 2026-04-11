@@ -1,44 +1,19 @@
 import os
 import re
 import io
-import json
 import zipfile
 import requests
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, PicklePersistence
 
 TOKEN = os.environ.get("BOT_TOKEN", "8360418340:AAHKn6zyjvzJc3Fulr6xTdidKK98Yd3rAYw")
-HISTORY_FILE = "download_history.json"
+HISTORY_CHANNEL = -1003947852695
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
     "Referer": "https://www.cgtrader.com/",
 }
-
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_history(history):
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-
-def is_downloaded(url):
-    history = load_history()
-    return history.get(url)
-
-def mark_downloaded(url, slug, designer):
-    history = load_history()
-    history[url] = {
-        "slug": slug,
-        "designer": designer,
-        "date": datetime.now().strftime("%d.%m.%Y %H:%M")
-    }
-    save_history(history)
 
 
 def extract_images(page_url):
@@ -107,7 +82,25 @@ async def do_download(update, context, url, msg=None):
             caption=f"✅ {done} resim\n📁 {zip_name}"
         )
         await msg.delete()
-        mark_downloaded(url, slug, designer)
+
+        # Geçmişe kaydet
+        if "history" not in context.bot_data:
+            context.bot_data["history"] = {}
+        context.bot_data["history"][url] = {
+            "designer": designer,
+            "slug": slug,
+            "date": datetime.now().strftime("%d.%m.%Y %H:%M")
+        }
+
+        # Kanala da kaydet
+        try:
+            await context.bot.send_message(
+                chat_id=HISTORY_CHANNEL,
+                text=f"✅ {designer} - {slug}\n🔗 {url}",
+                disable_web_page_preview=True
+            )
+        except:
+            pass
 
     except Exception as e:
         if msg:
@@ -121,17 +114,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 /gecmis — daha önce indirdiklerini gör"
     )
 
+
 async def gecmis(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    history = load_history()
+    history = context.bot_data.get("history", {})
     if not history:
-        await update.message.reply_text("📋 Henüz hiç indirme yapmadın.")
+        await update.message.reply_text(
+            "📋 Henüz hiç indirme yapmadın.\n\n"
+            f"Kanal: https://t.me/cgtrader_gecmis"
+        )
         return
 
-    lines = ["📋 *İndirme Geçmişi*\n"]
+    lines = ["📋 *Son İndirmeler*\n"]
     for i, (url, info) in enumerate(list(history.items())[-20:], 1):
         lines.append(f"{i}. `{info['designer']} - {info['slug'][:30]}`\n   🕐 {info['date']}")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    lines.append(f"\n📺 Tüm geçmiş: https://t.me/cgtrader_gecmis")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
 
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -141,22 +139,23 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Lütfen geçerli bir CGTrader ürün linki gönder.")
         return
 
-    prev = is_downloaded(url)
-    if prev:
+    history = context.bot_data.get("history", {})
+
+    if url in history:
+        info = history[url]
         keyboard = [
             [
                 InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{url}"),
                 InlineKeyboardButton("❌ İptal", callback_data="cancel")
             ]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             f"⚠️ *Bu ürünü daha önce indirdin!*\n\n"
-            f"📁 {prev['designer']} - {prev['slug'][:40]}\n"
-            f"🕐 {prev['date']}\n\n"
+            f"📁 {info['designer']} - {info['slug'][:40]}\n"
+            f"🕐 {info['date']}\n\n"
             f"Yine de indirmek ister misin?",
             parse_mode="Markdown",
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
@@ -178,7 +177,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    persistence = PicklePersistence(filepath="bot_data.pkl")
+    app = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("gecmis", gecmis))
     app.add_handler(CallbackQueryHandler(button_callback))
