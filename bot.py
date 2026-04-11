@@ -25,29 +25,36 @@ def url_to_key(url):
 
 
 def parse_and_save(text):
-    """Kanal mesajından URL ve bilgileri çıkar."""
-    lines = text.strip().split('\n')
-    url = None
-    designer = "unknown"
-    slug = "unknown"
+    """Kanal mesajından URL çıkar - her formatta çalışır."""
+    if not text or "cgtrader.com" not in text:
+        return False
 
+    # Tüm cgtrader URL'lerini bul (eski ve yeni format)
+    urls = re.findall(r'https://www\.cgtrader\.com/\S+', text)
+    
+    if not urls:
+        return False
+
+    url = urls[0].strip().rstrip(')')
+    
+    # Tasarımcı ve slug bilgisini çıkarmaya çalış (yeni format)
+    designer = "unknown"
+    slug = url.rstrip("/").split("/")[-1][:50]
+    
+    lines = text.strip().split('\n')
     for line in lines:
-        if "🔗 " in line:
-            url = line.split("🔗 ", 1)[1].strip()
-        elif line.startswith("✅ "):
+        if line.startswith("✅ "):
             parts = line[2:].strip().split(" - ", 1)
             if len(parts) == 2:
                 designer = parts[0].strip()
-                slug = parts[1].strip()
+                slug = parts[1].strip()[:50]
 
-    if url and "cgtrader.com" in url:
-        HISTORY[url] = {
-            "designer": designer,
-            "slug": slug,
-            "date": "Geçmiş"
-        }
-        return True
-    return False
+    HISTORY[url] = {
+        "designer": designer,
+        "slug": slug,
+        "date": "Geçmiş"
+    }
+    return True
 
 
 async def post_init(app):
@@ -56,7 +63,6 @@ async def post_init(app):
     loaded = 0
 
     try:
-        # Kanal mesajlarını ID'ye göre tara (1'den başla)
         msg_id = 1
         empty_count = 0
 
@@ -68,11 +74,15 @@ async def post_init(app):
                     message_id=msg_id
                 )
                 # Forward edilen mesajı sil
-                await app.bot.delete_message(
-                    chat_id=HISTORY_CHANNEL,
-                    message_id=msg.message_id
-                )
-                if msg.text and "🔗" in msg.text and "cgtrader.com" in msg.text:
+                try:
+                    await app.bot.delete_message(
+                        chat_id=HISTORY_CHANNEL,
+                        message_id=msg.message_id
+                    )
+                except:
+                    pass
+
+                if msg.text and "cgtrader.com" in msg.text:
                     if parse_and_save(msg.text):
                         loaded += 1
                 empty_count = 0
