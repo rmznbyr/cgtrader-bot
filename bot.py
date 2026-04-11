@@ -43,13 +43,15 @@ def parse_channel_message(text):
     designer = "unknown"
     slug = "unknown"
 
-    # Yeni format: "✅ designer - slug\n🔗 url"
+    # Format 1: "✅ designer - slug\n🔗 url"
+    # Format 2: "📦 gecmis - slug\n🔗 url"
     if "🔗 " in text:
         for line in text.split('\n'):
             if "🔗 " in line:
                 url = line.split("🔗 ", 1)[1].strip()
-            elif line.startswith("✅ "):
-                parts = line[2:].strip().split(" - ", 1)
+            elif line.startswith("✅ ") or line.startswith("📦 "):
+                prefix = "✅ " if line.startswith("✅ ") else "📦 "
+                parts = line[len(prefix):].strip().split(" - ", 1)
                 if len(parts) == 2:
                     designer = parts[0].strip()
                     slug = parts[1].strip()
@@ -58,7 +60,6 @@ def parse_channel_message(text):
     if not url:
         url = extract_url_from_text(text)
         if url:
-            # Slug'ı URL'den çıkar
             slug = url.rstrip("/").split("/")[-1][:50]
 
     if url and "cgtrader.com" in url:
