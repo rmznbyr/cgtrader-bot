@@ -76,14 +76,15 @@ async def post_init(app):
         msg_id = 1
         empty_count = 0
 
-        while empty_count < 200:
+        while empty_count < 500:
             try:
                 msg = await app.bot.forward_message(
                     chat_id=HISTORY_CHANNEL,
                     from_chat_id=HISTORY_CHANNEL,
                     message_id=msg_id
                 )
-                # Forward edilen mesajı sil
+                text = msg.text or msg.caption or ""
+                # Forward edilen kopyayı sil (orijinal mesaj korunur)
                 try:
                     await app.bot.delete_message(
                         chat_id=HISTORY_CHANNEL,
@@ -91,8 +92,6 @@ async def post_init(app):
                     )
                 except:
                     pass
-
-                text = msg.text or msg.caption or ""
                 result = parse_channel_message(text)
                 if result:
                     HISTORY[result["url"]] = {
@@ -107,7 +106,7 @@ async def post_init(app):
                 empty_count += 1
 
             msg_id += 1
-            if msg_id > 10000:
+            if msg_id > 100000:
                 break
 
         print(f"✅ {loaded} geçmiş kayıt yüklendi")
