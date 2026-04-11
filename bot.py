@@ -2,6 +2,7 @@ import os
 import re
 import io
 import zipfile
+import hashlib
 import requests
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,8 +16,15 @@ HEADERS = {
     "Referer": "https://www.cgtrader.com/",
 }
 
-# Bellek içi geçmiş (bot çalıştığı sürece kalıcı)
+# Bellek içi geçmiş
 HISTORY = {}
+# URL hash -> tam URL eşleşmesi
+URL_MAP = {}
+
+
+def url_to_key(url):
+    """URL'den kısa hash key üret (max 32 karakter)."""
+    return hashlib.md5(url.encode()).hexdigest()[:16]
 
 
 def extract_images(page_url):
@@ -93,7 +101,7 @@ async def do_download(update, context, url, msg=None):
             "date": datetime.now().strftime("%d.%m.%Y %H:%M")
         }
 
-        # Kanala da kaydet
+        # Kanala kaydet
         try:
             await context.bot.send_message(
                 chat_id=HISTORY_CHANNEL,
@@ -150,8 +158,11 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if url in HISTORY:
         info = HISTORY[url]
+        # URL hash'ini buton callback'e koy (max 64 karakter)
+        key = url_to_key(url)
+        URL_MAP[key] = url
         keyboard = [[
-            InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{url}"),
+            InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{key}"),
             InlineKeyboardButton("❌ İptal", callback_data="cancel")
         ]]
         await update.effective_message.reply_text(
@@ -176,7 +187,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if query.data.startswith("dl|"):
-        url = query.data[3:]
+        key = query.data[3:]
+        url = URL_MAP.get(key)
+        if not url:
+            await query.edit_message_text("❌ Link bulunamadı, tekrar gönder.")
+            return
         await query.edit_message_text("⏳ İndiriliyor...")
         await do_download(update, context, url, msg=query.message)
 
