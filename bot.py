@@ -5,7 +5,7 @@ import zipfile
 import requests
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, PicklePersistence
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN", "8360418340:AAHKn6zyjvzJc3Fulr6xTdidKK98Yd3rAYw")
 HISTORY_CHANNEL = -1003947852695
@@ -14,6 +14,9 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
     "Referer": "https://www.cgtrader.com/",
 }
+
+# Bellek içi geçmiş (bot çalıştığı sürece kalıcı)
+HISTORY = {}
 
 
 def extract_images(page_url):
@@ -84,9 +87,7 @@ async def do_download(update, context, url, msg=None):
         await msg.delete()
 
         # Geçmişe kaydet
-        if "history" not in context.bot_data:
-            context.bot_data["history"] = {}
-        context.bot_data["history"][url] = {
+        HISTORY[url] = {
             "designer": designer,
             "slug": slug,
             "date": datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -120,8 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def gecmis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_message:
         return
-    history = context.bot_data.get("history", {})
-    if not history:
+    if not HISTORY:
         await update.effective_message.reply_text(
             "📋 Henüz hiç indirme yapmadın.\n\n"
             f"Kanal: https://t.me/cgtrader_gecmis"
@@ -129,7 +129,7 @@ async def gecmis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lines = ["📋 *Son İndirmeler*\n"]
-    for i, (url, info) in enumerate(list(history.items())[-20:], 1):
+    for i, (url, info) in enumerate(list(HISTORY.items())[-20:], 1):
         lines.append(f"{i}. `{info['designer']} - {info['slug'][:30]}`\n   🕐 {info['date']}")
 
     lines.append(f"\n📺 Tüm geçmiş: https://t.me/cgtrader_gecmis")
@@ -148,10 +148,8 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ Lütfen geçerli bir CGTrader ürün linki gönder.")
         return
 
-    history = context.bot_data.get("history", {})
-
-    if url in history:
-        info = history[url]
+    if url in HISTORY:
+        info = HISTORY[url]
         keyboard = [[
             InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{url}"),
             InlineKeyboardButton("❌ İptal", callback_data="cancel")
@@ -184,11 +182,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    persistence = PicklePersistence(filepath="bot_data.pkl")
     app = (
         ApplicationBuilder()
         .token(TOKEN)
-        .persistence(persistence)
         .concurrent_updates(False)
         .build()
     )
