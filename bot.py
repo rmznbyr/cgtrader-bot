@@ -76,7 +76,7 @@ async def post_init(app):
         msg_id = 1
         empty_count = 0
 
-        while empty_count < 30:
+        while empty_count < 200:
             try:
                 msg = await app.bot.forward_message(
                     chat_id=HISTORY_CHANNEL,
