@@ -115,18 +115,34 @@ async def post_init(app):
 
 
 def extract_images(page_url):
+    """CGTrader sayfasından ürün resimlerini çıkar.
+
+    CGTrader Eylül 2026'da URL yapısını değiştirdi:
+      Eski: img-new.cgtrader.com/items/{id}/{hash}/thumb/filename.jpg
+      Yeni: img-new.cgtrader.com/items/{id}/{hash}/filename.jpg   (direkt tam boyut)
+            img-new.cgtrader.com/items/{id}/{hash}/large/...jpg   (varyant)
+    """
     r = requests.get(page_url, headers=HEADERS, timeout=20)
     r.raise_for_status()
     html = r.text
 
-    id_match = re.search(r'img-new\.cgtrader\.com/items/(\d+)/[a-f0-9]+/thumb/', html)
+    # Item ID + hash'i herhangi bir CGTrader resim URL'sinden bul
+    id_match = re.search(r'img-new\.cgtrader\.com/items/(\d+)/([a-f0-9]+)/', html)
     if not id_match:
         return None, None, None
 
     item_id = id_match.group(1)
-    pattern = rf'https://img-new\.cgtrader\.com/items/{item_id}/[a-f0-9]+/thumb/[^\s"\'<>]+'
-    thumbs = list(dict.fromkeys(re.findall(pattern, html)))
-    urls = [u.replace('/thumb/', '/') for u in thumbs]
+    item_hash = id_match.group(2)
+
+    # Bu item icin tum resim URL'lerini bul (direkt VEYA /large/, /thumb/ vs. varyantli)
+    pattern = rf'https://img-new\.cgtrader\.com/items/{item_id}/{item_hash}/(?:[a-z]+/)?([^/\s"\'<>?]+\.(?:jpg|jpeg|png|webp))'
+    filenames = re.findall(pattern, html, re.IGNORECASE)
+
+    # Ayni dosyayi bir kere al, sirayi koru
+    unique_files = list(dict.fromkeys(filenames))
+
+    # Tam boyut URL'ler olusturur (alt klasor olmadan)
+    urls = [f"https://img-new.cgtrader.com/items/{item_id}/{item_hash}/{fname}" for fname in unique_files]
 
     d_match = re.search(r'/designers/([a-zA-Z0-9_\-]+)', html)
     designer = "unknown"
