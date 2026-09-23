@@ -8,7 +8,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-TOKEN = os.environ.get("BOT_TOKEN", "8360418340:AAHKn6zyjvzJc3Fulr6xTdidKK98Yd3rAYw")
+TOKEN = os.environ.get("BOT_TOKEN", "")
 HISTORY_CHANNEL = -1003947852695
 
 HEADERS = {
@@ -25,7 +25,6 @@ def url_to_key(url):
 
 
 def extract_url_from_text(text):
-    """Metinden CGTrader URL'si çıkar."""
     if not text:
         return None
     urls = re.findall(r'https?://(?:www\.)?cgtrader\.com/\S+', text)
@@ -35,7 +34,6 @@ def extract_url_from_text(text):
 
 
 def parse_channel_message(text):
-    """Kanal mesajından URL ve bilgileri çıkar - tüm formatları destekler."""
     if not text or "cgtrader.com" not in text:
         return None
 
@@ -43,8 +41,6 @@ def parse_channel_message(text):
     designer = "unknown"
     slug = "unknown"
 
-    # Format 1: "✅ designer - slug\n🔗 url"
-    # Format 2: "📦 gecmis - slug\n🔗 url"
     if "🔗 " in text:
         for line in text.split('\n'):
             if "🔗 " in line:
@@ -56,7 +52,6 @@ def parse_channel_message(text):
                     designer = parts[0].strip()
                     slug = parts[1].strip()
 
-    # Eski format: sadece URL
     if not url:
         url = extract_url_from_text(text)
         if url:
@@ -68,7 +63,6 @@ def parse_channel_message(text):
 
 
 async def post_init(app):
-    """Bot başlarken kanalı tara ve tüm geçmişi yükle."""
     print("Kanal geçmişi yükleniyor...")
     loaded = 0
 
@@ -84,7 +78,6 @@ async def post_init(app):
                     message_id=msg_id
                 )
                 text = msg.text or msg.caption or ""
-                # Forward edilen kopyayı sil (orijinal mesaj korunur)
                 try:
                     await app.bot.delete_message(
                         chat_id=HISTORY_CHANNEL,
@@ -115,34 +108,35 @@ async def post_init(app):
 
 
 def extract_images(page_url):
-    """CGTrader sayfasından ürün resimlerini çıkar.
+    """CGTrader sayfasindan urun resimlerini cikar.
 
-    CGTrader Eylül 2026'da URL yapısını değiştirdi:
-      Eski: img-new.cgtrader.com/items/{id}/{hash}/thumb/filename.jpg
-      Yeni: img-new.cgtrader.com/items/{id}/{hash}/filename.jpg   (direkt tam boyut)
-            img-new.cgtrader.com/items/{id}/{hash}/large/...jpg   (varyant)
+    Her resmin AYRI bir hash'i var:
+      img-new.cgtrader.com/items/{item_id}/{hash1}/thumb/img1.jpg
+      img-new.cgtrader.com/items/{item_id}/{hash2}/thumb/img2.jpg
+      img-new.cgtrader.com/items/{item_id}/{hash3}/img3.webp     (direkt)
     """
     r = requests.get(page_url, headers=HEADERS, timeout=20)
     r.raise_for_status()
     html = r.text
 
-    # Item ID + hash'i herhangi bir CGTrader resim URL'sinden bul
-    id_match = re.search(r'img-new\.cgtrader\.com/items/(\d+)/([a-f0-9]+)/', html)
+    id_match = re.search(r'img-new\.cgtrader\.com/items/(\d+)/[a-f0-9]+/', html)
     if not id_match:
         return None, None, None
 
     item_id = id_match.group(1)
-    item_hash = id_match.group(2)
 
-    # Bu item icin tum resim URL'lerini bul (direkt VEYA /large/, /thumb/ vs. varyantli)
-    pattern = rf'https://img-new\.cgtrader\.com/items/{item_id}/{item_hash}/(?:[a-z]+/)?([^/\s"\'<>?]+\.(?:jpg|jpeg|png|webp))'
-    filenames = re.findall(pattern, html, re.IGNORECASE)
+    pattern = rf'https://img-new\.cgtrader\.com/items/{item_id}/([a-f0-9]+)/(?:[a-z]+/)?([^/\s"\'<>?]+\.(?:jpg|jpeg|png|webp))'
+    matches = re.findall(pattern, html, re.IGNORECASE)
 
-    # Ayni dosyayi bir kere al, sirayi koru
-    unique_files = list(dict.fromkeys(filenames))
+    seen = set()
+    unique = []
+    for h, f in matches:
+        key = (h, f)
+        if key not in seen:
+            seen.add(key)
+            unique.append((h, f))
 
-    # Tam boyut URL'ler olusturur (alt klasor olmadan)
-    urls = [f"https://img-new.cgtrader.com/items/{item_id}/{item_hash}/{fname}" for fname in unique_files]
+    urls = [f"https://img-new.cgtrader.com/items/{item_id}/{h}/{f}" for h, f in unique]
 
     d_match = re.search(r'/designers/([a-zA-Z0-9_\-]+)', html)
     designer = "unknown"
