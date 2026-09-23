@@ -1,3 +1,4 @@
+python
 import os
 import re
 import io
@@ -12,8 +13,21 @@ TOKEN = os.environ.get("BOT_TOKEN", "")
 HISTORY_CHANNEL = -1003947852695
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
-    "Referer": "https://www.cgtrader.com/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,tr;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "Referer": "https://www.google.com/",
 }
 
 HISTORY = {}
@@ -108,25 +122,37 @@ async def post_init(app):
 
 
 def extract_images(page_url):
-    """CGTrader sayfasindan urun resimlerini cikar.
+    """CGTrader sayfasindan urun resimlerini cikar."""
+    session = requests.Session()
+    session.headers.update(HEADERS)
 
-    Her resmin AYRI bir hash'i var:
-      img-new.cgtrader.com/items/{item_id}/{hash1}/thumb/img1.jpg
-      img-new.cgtrader.com/items/{item_id}/{hash2}/thumb/img2.jpg
-      img-new.cgtrader.com/items/{item_id}/{hash3}/img3.webp     (direkt)
-    """
-    r = requests.get(page_url, headers=HEADERS, timeout=20)
-    r.raise_for_status()
-    html = r.text
+    try:
+        r = session.get(page_url, timeout=30)
+        r.raise_for_status()
+        html = r.text
+    except Exception as e:
+        print(f"[DEBUG] HTTP hatası: {e}")
+        return None, None, None
+
+    print(f"[DEBUG] HTML uzunluğu: {len(html)}")
+    print(f"[DEBUG] HTTP durum: {r.status_code}")
 
     id_match = re.search(r'img-new\.cgtrader\.com/items/(\d+)/[a-f0-9]+/', html)
     if not id_match:
+        print(f"[DEBUG] Item ID bulunamadı.")
+        print(f"[DEBUG] 'img-new' geçiyor mu: {'img-new' in html}")
+        print(f"[DEBUG] 'cgtrader' geçiyor mu: {'cgtrader' in html}")
+        print(f"[DEBUG] 'Just a moment' (Cloudflare) geçiyor mu: {'Just a moment' in html}")
+        print(f"[DEBUG] '403' geçiyor mu: {'403' in html[:1000]}")
+        print(f"[DEBUG] HTML ilk 500 karakter: {html[:500]}")
         return None, None, None
 
     item_id = id_match.group(1)
+    print(f"[DEBUG] Item ID bulundu: {item_id}")
 
     pattern = rf'https://img-new\.cgtrader\.com/items/{item_id}/([a-f0-9]+)/(?:[a-z]+/)?([^/\s"\'<>?]+\.(?:jpg|jpeg|png|webp))'
     matches = re.findall(pattern, html, re.IGNORECASE)
+    print(f"[DEBUG] Bulunan match sayısı: {len(matches)}")
 
     seen = set()
     unique = []
@@ -137,6 +163,7 @@ def extract_images(page_url):
             unique.append((h, f))
 
     urls = [f"https://img-new.cgtrader.com/items/{item_id}/{h}/{f}" for h, f in unique]
+    print(f"[DEBUG] Unique resim sayısı: {len(urls)}")
 
     d_match = re.search(r'/designers/([a-zA-Z0-9_\-]+)', html)
     designer = "unknown"
