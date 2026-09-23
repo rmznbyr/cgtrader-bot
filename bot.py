@@ -1,4 +1,3 @@
-python
 import os
 import re
 import io
@@ -55,12 +54,12 @@ def parse_channel_message(text):
     designer = "unknown"
     slug = "unknown"
 
-    if "🔗 " in text:
+    if "\U0001F517 " in text:
         for line in text.split('\n'):
-            if "🔗 " in line:
-                url = line.split("🔗 ", 1)[1].strip()
-            elif line.startswith("✅ ") or line.startswith("📦 "):
-                prefix = "✅ " if line.startswith("✅ ") else "📦 "
+            if "\U0001F517 " in line:
+                url = line.split("\U0001F517 ", 1)[1].strip()
+            elif line.startswith("✅ ") or line.startswith("\U0001F4E6 "):
+                prefix = "✅ " if line.startswith("✅ ") else "\U0001F4E6 "
                 parts = line[len(prefix):].strip().split(" - ", 1)
                 if len(parts) == 2:
                     designer = parts[0].strip()
@@ -77,7 +76,7 @@ def parse_channel_message(text):
 
 
 async def post_init(app):
-    print("Kanal geçmişi yükleniyor...")
+    print("Kanal gecmisi yukleniyor...")
     loaded = 0
 
     try:
@@ -104,7 +103,7 @@ async def post_init(app):
                     HISTORY[result["url"]] = {
                         "designer": result["designer"],
                         "slug": result["slug"],
-                        "date": "Geçmiş"
+                        "date": "Gecmis"
                     }
                     loaded += 1
 
@@ -116,13 +115,12 @@ async def post_init(app):
             if msg_id > 100000:
                 break
 
-        print(f"✅ {loaded} geçmiş kayıt yüklendi")
+        print(f"✅ {loaded} gecmis kayit yuklendi")
     except Exception as e:
-        print(f"Geçmiş yükleme hatası: {e}")
+        print(f"Gecmis yukleme hatasi: {e}")
 
 
 def extract_images(page_url):
-    """CGTrader sayfasindan urun resimlerini cikar."""
     session = requests.Session()
     session.headers.update(HEADERS)
 
@@ -131,19 +129,19 @@ def extract_images(page_url):
         r.raise_for_status()
         html = r.text
     except Exception as e:
-        print(f"[DEBUG] HTTP hatası: {e}")
+        print(f"[DEBUG] HTTP hatasi: {e}")
         return None, None, None
 
-    print(f"[DEBUG] HTML uzunluğu: {len(html)}")
+    print(f"[DEBUG] HTML uzunlugu: {len(html)}")
     print(f"[DEBUG] HTTP durum: {r.status_code}")
 
     id_match = re.search(r'img-new\.cgtrader\.com/items/(\d+)/[a-f0-9]+/', html)
     if not id_match:
-        print(f"[DEBUG] Item ID bulunamadı.")
-        print(f"[DEBUG] 'img-new' geçiyor mu: {'img-new' in html}")
-        print(f"[DEBUG] 'cgtrader' geçiyor mu: {'cgtrader' in html}")
-        print(f"[DEBUG] 'Just a moment' (Cloudflare) geçiyor mu: {'Just a moment' in html}")
-        print(f"[DEBUG] '403' geçiyor mu: {'403' in html[:1000]}")
+        print(f"[DEBUG] Item ID bulunamadi.")
+        print(f"[DEBUG] 'img-new' geciyor mu: {'img-new' in html}")
+        print(f"[DEBUG] 'cgtrader' geciyor mu: {'cgtrader' in html}")
+        print(f"[DEBUG] 'Just a moment' (Cloudflare) geciyor mu: {'Just a moment' in html}")
+        print(f"[DEBUG] '403' geciyor mu: {'403' in html[:1000]}")
         print(f"[DEBUG] HTML ilk 500 karakter: {html[:500]}")
         return None, None, None
 
@@ -152,7 +150,7 @@ def extract_images(page_url):
 
     pattern = rf'https://img-new\.cgtrader\.com/items/{item_id}/([a-f0-9]+)/(?:[a-z]+/)?([^/\s"\'<>?]+\.(?:jpg|jpeg|png|webp))'
     matches = re.findall(pattern, html, re.IGNORECASE)
-    print(f"[DEBUG] Bulunan match sayısı: {len(matches)}")
+    print(f"[DEBUG] Bulunan match sayisi: {len(matches)}")
 
     seen = set()
     unique = []
@@ -163,7 +161,7 @@ def extract_images(page_url):
             unique.append((h, f))
 
     urls = [f"https://img-new.cgtrader.com/items/{item_id}/{h}/{f}" for h, f in unique]
-    print(f"[DEBUG] Unique resim sayısı: {len(urls)}")
+    print(f"[DEBUG] Unique resim sayisi: {len(urls)}")
 
     d_match = re.search(r'/designers/([a-zA-Z0-9_\-]+)', html)
     designer = "unknown"
@@ -177,17 +175,17 @@ def extract_images(page_url):
 async def do_download(update, context, url, msg=None):
     try:
         if msg:
-            await msg.edit_text("🔍 Sayfa taranıyor...")
+            await msg.edit_text("\U0001F50D Sayfa taraniyor...")
         else:
-            msg = await update.effective_message.reply_text("🔍 Sayfa taranıyor...")
+            msg = await update.effective_message.reply_text("\U0001F50D Sayfa taraniyor...")
 
         urls, designer, slug = extract_images(url)
 
         if not urls:
-            await msg.edit_text("❌ Bu sayfada ürün resmi bulunamadı.")
+            await msg.edit_text("❌ Bu sayfada urun resmi bulunamadi.")
             return
 
-        await msg.edit_text(f"📦 {len(urls)} resim bulundu, indiriliyor...")
+        await msg.edit_text(f"\U0001F4E6 {len(urls)} resim bulundu, indiriliyor...")
 
         zip_buffer = io.BytesIO()
         done = 0
@@ -210,11 +208,11 @@ async def do_download(update, context, url, msg=None):
         zip_buffer.seek(0)
         zip_name = f"{designer} - {slug}.zip"
 
-        await msg.edit_text(f"✅ {done} resim hazır, gönderiliyor...")
+        await msg.edit_text(f"✅ {done} resim hazir, gonderiliyor...")
         await update.effective_message.reply_document(
             document=zip_buffer,
             filename=zip_name,
-            caption=f"✅ {done} resim\n📁 {zip_name}"
+            caption=f"✅ {done} resim\n\U0001F4C1 {zip_name}"
         )
         await msg.delete()
 
@@ -227,24 +225,24 @@ async def do_download(update, context, url, msg=None):
         try:
             await context.bot.send_message(
                 chat_id=HISTORY_CHANNEL,
-                text=f"✅ {designer} - {slug}\n🔗 {url}",
+                text=f"✅ {designer} - {slug}\n\U0001F517 {url}",
                 disable_web_page_preview=True
             )
         except Exception as e:
-            print(f"Kanal hatası: {e}")
+            print(f"Kanal hatasi: {e}")
 
     except Exception as e:
         if msg:
-            await msg.edit_text(f"❌ Hata oluştu: {str(e)}")
+            await msg.edit_text(f"❌ Hata olustu: {str(e)}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_message:
         return
     await update.effective_message.reply_text(
-        "👋 Merhaba! CGTrader Resim İndirici Bot'a hoş geldin.\n\n"
-        "📎 Bana bir CGTrader ürün linki gönder, resimleri ZIP olarak sana göndereyim!\n\n"
-        "📋 /gecmis — daha önce indirdiklerini gör"
+        "\U0001F44B Merhaba! CGTrader Resim Indirici Bot'a hos geldin.\n\n"
+        "\U0001F4CE Bana bir CGTrader urun linki gonder, resimleri ZIP olarak sana gondereyim!\n\n"
+        "\U0001F4CB /gecmis - daha once indirdiklerini gor"
     )
 
 
@@ -253,16 +251,16 @@ async def gecmis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not HISTORY:
         await update.effective_message.reply_text(
-            "📋 Henüz hiç indirme yapmadın.\n\n"
+            "\U0001F4CB Henuz hic indirme yapmadin.\n\n"
             f"Kanal: https://t.me/cgtrader_gecmis"
         )
         return
 
-    lines = ["📋 *Son İndirmeler*\n"]
+    lines = ["\U0001F4CB *Son Indirmeler*\n"]
     for i, (url, info) in enumerate(list(HISTORY.items())[-20:], 1):
-        lines.append(f"{i}. `{info['designer']} - {info['slug'][:30]}`\n   🕐 {info['date']}")
+        lines.append(f"{i}. `{info['designer']} - {info['slug'][:30]}`\n   \U0001F550 {info['date']}")
 
-    lines.append(f"\n📺 Tüm geçmiş: https://t.me/cgtrader_gecmis")
+    lines.append(f"\n\U0001F4FA Tum gecmis: https://t.me/cgtrader_gecmis")
     await update.effective_message.reply_text(
         "\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True
     )
@@ -275,7 +273,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.effective_message.text.strip()
 
     if "cgtrader.com" not in url:
-        await update.effective_message.reply_text("❌ Lütfen geçerli bir CGTrader ürün linki gönder.")
+        await update.effective_message.reply_text("❌ Lutfen gecerli bir CGTrader urun linki gonder.")
         return
 
     if url in HISTORY:
@@ -284,12 +282,12 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         URL_MAP[key] = url
         keyboard = [[
             InlineKeyboardButton("⬇️ Yine de indir", callback_data=f"dl|{key}"),
-            InlineKeyboardButton("❌ İptal", callback_data="cancel")
+            InlineKeyboardButton("❌ Iptal", callback_data="cancel")
         ]]
         await update.effective_message.reply_text(
-            f"⚠️ *Bu ürünü daha önce indirdin!*\n\n"
-            f"📁 {info['designer']} - {info['slug'][:40]}\n"
-            f"🕐 {info['date']}\n\n"
+            f"⚠️ *Bu urunu daha once indirdin!*\n\n"
+            f"\U0001F4C1 {info['designer']} - {info['slug'][:40]}\n"
+            f"\U0001F550 {info['date']}\n\n"
             f"Yine de indirmek ister misin?",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -304,16 +302,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "cancel":
-        await query.edit_message_text("❌ İptal edildi.")
+        await query.edit_message_text("❌ Iptal edildi.")
         return
 
     if query.data.startswith("dl|"):
         key = query.data[3:]
         url = URL_MAP.get(key)
         if not url:
-            await query.edit_message_text("❌ Link bulunamadı, tekrar gönder.")
+            await query.edit_message_text("❌ Link bulunamadi, tekrar gonder.")
             return
-        await query.edit_message_text("⏳ İndiriliyor...")
+        await query.edit_message_text("⏳ Indiriliyor...")
         await do_download(update, context, url, msg=query.message)
 
 
@@ -329,7 +327,7 @@ def main():
     app.add_handler(CommandHandler("gecmis", gecmis))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
-    print("Bot başlatıldı...")
+    print("Bot baslatildi...")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
